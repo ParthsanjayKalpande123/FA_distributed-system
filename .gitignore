@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+frontend/.next/
+frontend/out/
+
+# Environment files and local overrides
+.env
+.env.*
+!.env.example
+docker-compose.override.yml
+
+# Logs and runtime data
+*.log
+backend/data/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
