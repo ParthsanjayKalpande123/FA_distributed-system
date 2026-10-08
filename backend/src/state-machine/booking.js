@@ -2,6 +2,7 @@
 class BookingStateMachine {
   constructor() {
     this.bookings = new Map();
+    this.nextQueuePosition = 1;
   }
 
   apply(command) {
@@ -14,6 +15,7 @@ class BookingStateMachine {
         timeSlot,
         requestedBy,
         status: 'pending',
+        queuePosition: this.nextQueuePosition++,
         createdAt: Date.now()
       };
       this.bookings.set(bookingId, booking);
@@ -26,6 +28,22 @@ class BookingStateMachine {
       if (!booking) return null;
       
       if (decision === 'approved') {
+        const earlierPending = Array.from(this.bookings.values()).find(other =>
+          other.status === 'pending' &&
+          other.queuePosition < booking.queuePosition &&
+          other.resource === booking.resource &&
+          other.date === booking.date &&
+          other.timeSlot === booking.timeSlot
+        );
+        if (earlierPending) {
+          return {
+            error: 'FAIR_QUEUE_ORDER',
+            message: `Booking is behind request ${earlierPending.id} in the fair queue.`,
+            blockingBookingId: earlierPending.id,
+            booking
+          };
+        }
+
         // Check conflicts
         for (const [id, b] of this.bookings.entries()) {
           if (b.status === 'approved' && b.resource === booking.resource && b.date === booking.date && b.timeSlot === booking.timeSlot) {
@@ -52,7 +70,7 @@ class BookingStateMachine {
     if (requestedBy) {
       result = result.filter(b => b.requestedBy === requestedBy);
     }
-    return result;
+    return result.sort((a, b) => a.queuePosition - b.queuePosition);
   }
 
   getById(id) {

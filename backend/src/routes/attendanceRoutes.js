@@ -18,11 +18,11 @@ function createAttendanceRoutes(raftNode, stateMachine) {
   });
 
   router.get('/api/attendance', (req, res) => {
-    const { date } = req.query;
+    const { date, subject } = req.query;
     if (!date) {
       return res.status(400).json({ error: 'Date is required' });
     }
-    const result = stateMachine.attendance.query(date);
+    const result = stateMachine.attendance.query(date, subject);
     res.json(result);
   });
 

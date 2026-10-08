@@ -28,6 +28,10 @@ function createBookingRoutes(raftNode, stateMachine, redisPubSub) {
         decidedBy: req.body.decidedBy 
       });
       if (result) {
+        if (result.error === 'FAIR_QUEUE_ORDER') {
+          res.status(409).json(result);
+          return;
+        }
         redisPubSub.publishBookingNotification({ 
           bookingId: result.id, 
           status: result.status, 

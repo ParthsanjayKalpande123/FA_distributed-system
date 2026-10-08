@@ -17,6 +17,23 @@ const { createBookingRoutes } = require('./routes/bookingRoutes');
 const { createAuthRoutes } = require('./routes/authRoutes');
 const { createAdminRoutes } = require('./routes/adminRoutes');
 
+const { MapReduceEngine } = require('./distributed/mapReduce');
+const { ServiceRegistry } = require('./distributed/serviceRegistry');
+const { createBlockchainRoutes } = require('./routes/blockchainRoutes');
+const { createFileRoutes } = require('./routes/fileRoutes');
+const { createMapReduceRoutes } = require('./routes/mapreduceRoutes');
+const { createServiceRegistryRoutes } = require('./routes/serviceRegistryRoutes');
+const { FaaSEngine } = require('./distributed/faas');
+const { APIGateway } = require('./distributed/gateway');
+const { CAPDemonstrator } = require('./distributed/capDemo');
+const { createFaaSRoutes } = require('./routes/faasRoutes');
+const { createGatewayRoutes } = require('./routes/gatewayRoutes');
+const { createCAPRoutes } = require('./routes/capRoutes');
+const { ElectionComparison } = require('./distributed/electionComparison');
+const { createElectionRoutes } = require('./routes/electionRoutes');
+const { GlobalSnapshot } = require('./distributed/globalSnapshot');
+const { createSnapshotRoutes } = require('./routes/snapshotRoutes');
+
 async function main() {
   const app = express();
   app.use(cors());
@@ -27,6 +44,13 @@ async function main() {
   const stateMachine = new StateMachine();
   const raftNode = new RaftNode(config, stateMachine);
   const gossipModule = new GossipModule(config);
+  const mapReduceEngine = new MapReduceEngine(config, stateMachine);
+  const serviceRegistry = new ServiceRegistry(config);
+  const faasEngine = new FaaSEngine(config, stateMachine);
+  const apiGateway = new APIGateway(config);
+  const capDemo = new CAPDemonstrator(config, raftNode, stateMachine);
+  const electionComparison = new ElectionComparison(config);
+  const globalSnapshot = new GlobalSnapshot(config, raftNode, stateMachine);
 
   setupWebSocket(server, raftNode, gossipModule);
   redisPubSub.setupRedisPubSub(config, raftNode, broadcastEvent);
@@ -36,6 +60,15 @@ async function main() {
   app.use(createBookingRoutes(raftNode, stateMachine, redisPubSub));
   app.use(createAuthRoutes());
   app.use(createAdminRoutes(raftNode, gossipModule));
+  app.use(createBlockchainRoutes(raftNode));
+  app.use(createFileRoutes(raftNode, stateMachine));
+  app.use(createMapReduceRoutes(mapReduceEngine));
+  app.use(createServiceRegistryRoutes(serviceRegistry));
+  app.use(createFaaSRoutes(faasEngine));
+  app.use(createGatewayRoutes(apiGateway));
+  app.use(createCAPRoutes(capDemo));
+  app.use(createElectionRoutes(electionComparison));
+  app.use(createSnapshotRoutes(globalSnapshot));
 
   app.get('/health', (req, res) => {
     res.json({
@@ -53,6 +86,57 @@ async function main() {
     setTimeout(() => {
       raftNode.start();
       gossipModule.start();
+
+      // Register services for Distributed Object-Based Systems
+      serviceRegistry.registerService('attendance', ['mark', 'query'], 'Attendance management service', async (method, args) => {
+        switch (method) {
+          case 'mark':
+            return await raftNode.propose({ type: 'MARK_ATTENDANCE', ...args });
+          case 'query':
+            return stateMachine.attendance.query(args.date);
+          default:
+            throw new Error(`Unknown method: ${method}`);
+        }
+      });
+
+      serviceRegistry.registerService('booking', ['create', 'decide', 'query'], 'Resource booking service', async (method, args) => {
+        switch (method) {
+          case 'create':
+            const bookingId = require('uuid').v4();
+            return await raftNode.propose({ type: 'CREATE_BOOKING', bookingId, ...args });
+          case 'decide':
+            return await raftNode.propose({ type: 'DECIDE_BOOKING', ...args });
+          case 'query':
+            return stateMachine.booking.query(args);
+          default:
+            throw new Error(`Unknown method: ${method}`);
+        }
+      });
+
+      serviceRegistry.registerService('filesystem', ['upload', 'list', 'stats'], 'Distributed file system service', async (method, args) => {
+        switch (method) {
+          case 'upload':
+            const fileId = require('uuid').v4();
+            return await raftNode.propose({ type: 'UPLOAD_FILE', fileId, ...args });
+          case 'list':
+            return stateMachine.fileSystem.query(args);
+          case 'stats':
+            return stateMachine.fileSystem.getStats();
+          default:
+            throw new Error(`Unknown method: ${method}`);
+        }
+      });
+
+      serviceRegistry.registerService('cluster', ['status', 'health'], 'Cluster management service', async (method, args) => {
+        switch (method) {
+          case 'status':
+            return raftNode.getStatus();
+          case 'health':
+            return { nodeId: config.nodeId, uptime: process.uptime(), memoryUsage: process.memoryUsage() };
+          default:
+            throw new Error(`Unknown method: ${method}`);
+        }
+      });
     }, 2000);
   });
 

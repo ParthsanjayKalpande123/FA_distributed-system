@@ -1,14 +1,28 @@
 /**
- * Get API base URL depending on cluster leader
+ * CampusWatch — cluster-aware API client
+ *
+ * Bypasses the Next.js proxy (which is hard-wired to node-a:3001) and
+ * talks directly to each node's port. On every request it:
+ *   1. Tries nodes in order [3001, 3002, 3003] until one responds.
+ *   2. If a node returns HTTP 307 + { leaderId } it redirects to the leader
+ *      and remembers it for future calls.
+ *   3. Falls back to the next node if the current one is unreachable.
  */
-export function getApiBase() {
+
+const NODE_PORTS = [3001, 3002, 3003];
+const PORT_MAP = { 'node-a': 3001, 'node-b': 3002, 'node-c': 3003 };
+
+/** Remember which port was last known to work (or be leader). */
+function getPreferredPort() {
+  if (typeof window === 'undefined') return NODE_PORTS[0];
+  const stored = localStorage.getItem('campuswatch_leader');
+  return stored ? Number(stored) : NODE_PORTS[0];
+}
+
+function setPreferredPort(port) {
   if (typeof window !== 'undefined') {
-    const leaderPort = localStorage.getItem('campuswatch_leader');
-    if (leaderPort) {
-      return `http://localhost:${leaderPort}`;
-    }
+    localStorage.setItem('campuswatch_leader', port);
   }
-  return '';
 }
 
 /**
@@ -18,66 +32,76 @@ export function getUser() {
   if (typeof window !== 'undefined') {
     const userStr = localStorage.getItem('campuswatch_user');
     if (userStr) {
-      try {
-        return JSON.parse(userStr);
-      } catch (e) {
-        return null;
-      }
+      try { return JSON.parse(userStr); } catch { return null; }
     }
   }
   return null;
 }
 
 /**
- * Standard fetch wrapper that handles leader redirects
+ * Cluster-aware fetch: tries the preferred node first, then all others.
+ * Handles leader redirects (307 + leaderId) automatically.
  */
 export async function apiRequest(path, options = {}) {
-  const baseUrl = getApiBase();
-  const url = `${baseUrl}${path}`;
-  
+  const preferred = getPreferredPort();
+  // Build an ordered list: preferred port first, then the rest
+  const orderedPorts = [
+    preferred,
+    ...NODE_PORTS.filter(p => p !== preferred)
+  ];
+
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {})
   };
+  const fetchOptions = { ...options, headers };
+  delete fetchOptions._retried; // internal flag, not needed for fetch
 
-  const response = await fetch(url, {
-    ...options,
-    headers
-  });
+  for (const port of orderedPorts) {
+    try {
+      const url = `http://localhost:${port}${path}`;
+      const response = await fetch(url, {
+        ...fetchOptions,
+        signal: AbortSignal.timeout(3000),
+      });
 
-  // Handle raft leader redirection manually if 307 or specific error payload
-  if (response.status === 307) {
-    const newLocation = response.headers.get('location');
-    if (newLocation) {
-       // Just update leader port if we can extract it for future calls
-       // Let the fetch follow it if it did automatically, but fetch with redirect: follow does that.
-    }
-  }
+      let data;
+      try { data = await response.json(); } catch { data = {}; }
 
-  let data;
-  try {
-    data = await response.json();
-  } catch (e) {
-    return { success: false, message: 'Failed to parse JSON response' };
-  }
-  
-  // If API tells us who the leader is (e.g. from an error or redirection response)
-  if (!response.ok && data.leaderId) {
-    // We assume leaderId corresponds to port like node-a -> 3001
-    const portMap = {
-      'node-a': 3001,
-      'node-b': 3002,
-      'node-c': 3003
-    };
-    const leaderPort = portMap[data.leaderId];
-    if (leaderPort && typeof window !== 'undefined') {
-      localStorage.setItem('campuswatch_leader', leaderPort);
-      // Retry once if requested
-      if (!options._retried) {
-         return apiRequest(path, { ...options, _retried: true });
+      // Leader redirect — the non-leader told us who the real leader is
+      if (response.status === 307 && data.leaderId) {
+        const leaderPort = PORT_MAP[data.leaderId];
+        if (leaderPort) {
+          setPreferredPort(leaderPort);
+          // Retry directly on the leader
+          try {
+            const leaderUrl = `http://localhost:${leaderPort}${path}`;
+            const leaderRes = await fetch(leaderUrl, {
+              ...fetchOptions,
+              signal: AbortSignal.timeout(3000),
+            });
+            try { return await leaderRes.json(); } catch { return {}; }
+          } catch {
+            // leader also unreachable, fall through to next port
+          }
+        }
+        continue;
       }
+
+      // Success — remember this port as preferred for next call
+      setPreferredPort(port);
+      return data;
+
+    } catch {
+      // Node unreachable — try next
     }
   }
 
-  return data;
+  // All nodes failed
+  return { error: 'All nodes unreachable' };
+}
+
+/** @deprecated use apiRequest directly */
+export function getApiBase() {
+  return `http://localhost:${getPreferredPort()}`;
 }

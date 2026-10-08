@@ -8,6 +8,8 @@
 - **3 backend nodes** (`node-a`, `node-b`, `node-c`) running a custom Raft consensus implementation
 - **Next.js frontend** with 4 role-based dashboards (Teacher, Student, HOD, Admin)
 - **Redis** for pub/sub messaging (leader-change events, booking notifications)
+- **Resource booking** with a fair FIFO approval queue for competing requests to the same slot
+- **Admin cluster monitor** with election-algorithm comparisons and a consistent global-state snapshot
 - **Docker Compose** orchestration
 
 ## Communication Paradigms (Unit 2)
@@ -36,9 +38,10 @@ docker compose up --build
 1. **Login** → pick a role (Teacher / Student / HOD / Admin)
 2. **Teacher** → mark attendance → verify it's replicated on all nodes
 3. **Student** → submit a booking request
-4. **HOD** → approve/reject the booking → student sees status change
+4. **HOD** → approve/reject the booking in FIFO order for requests competing for the same resource and time slot → student sees status change
 5. **Admin** → view live cluster, kill a node → watch leader re-election + gossip detection
 6. **Restart** killed node → watch log catch-up in real time
+7. **Admin** → compare Raft elections with Bully and Ring simulations, then capture a consistent global-state snapshot from the common applied log prefix. Bully and Ring are simulations, not cluster protocols; estimated metrics are illustrative. The snapshot excludes in-flight messages and is not a Chandy–Lamport implementation.
 
 ## Killing a Node (Failover Demo)
 
