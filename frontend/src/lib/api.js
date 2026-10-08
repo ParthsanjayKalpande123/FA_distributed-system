@@ -59,7 +59,7 @@ export async function apiRequest(path, options = {}) {
 
   for (const port of orderedPorts) {
     try {
-      const url = `http://localhost:${port}${path}`;
+      const url = `http://${location.hostname}:${port}${path}`;
       const response = await fetch(url, {
         ...fetchOptions,
         signal: AbortSignal.timeout(3000),
@@ -75,7 +75,7 @@ export async function apiRequest(path, options = {}) {
           setPreferredPort(leaderPort);
           // Retry directly on the leader
           try {
-            const leaderUrl = `http://localhost:${leaderPort}${path}`;
+            const leaderUrl = `http://${location.hostname}:${leaderPort}${path}`;
             const leaderRes = await fetch(leaderUrl, {
               ...fetchOptions,
               signal: AbortSignal.timeout(3000),
@@ -103,5 +103,5 @@ export async function apiRequest(path, options = {}) {
 
 /** @deprecated use apiRequest directly */
 export function getApiBase() {
-  return `http://localhost:${getPreferredPort()}`;
+  return `http://${location.hostname}:${getPreferredPort()}`;
 }

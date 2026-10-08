@@ -21,7 +21,7 @@ export function useWebSocket(ports = [3001, 3002, 3003]) {
 
       const port = portList[attemptIndexRef.current % portList.length];
       console.log(`[WS] Attempting connection to port ${port}...`);
-      const ws = new WebSocket(`ws://localhost:${port}/ws`);
+      const ws = new WebSocket(`ws://${location.hostname}:${port}/ws`);
       wsRef.current = ws;
 
       ws.onopen = () => {
