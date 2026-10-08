@@ -33,6 +33,7 @@ const { ElectionComparison } = require('./distributed/electionComparison');
 const { createElectionRoutes } = require('./routes/electionRoutes');
 const { GlobalSnapshot } = require('./distributed/globalSnapshot');
 const { createSnapshotRoutes } = require('./routes/snapshotRoutes');
+const { Clocks } = require('./distributed/clocks');
 
 async function main() {
   const app = express();
@@ -43,7 +44,8 @@ async function main() {
 
   const stateMachine = new StateMachine();
   const raftNode = new RaftNode(config, stateMachine);
-  const gossipModule = new GossipModule(config);
+  const clocks = new Clocks(config);
+  const gossipModule = new GossipModule(config, clocks);
   const mapReduceEngine = new MapReduceEngine(config, stateMachine);
   const serviceRegistry = new ServiceRegistry(config);
   const faasEngine = new FaaSEngine(config, stateMachine);
@@ -69,6 +71,8 @@ async function main() {
   app.use(createCAPRoutes(capDemo));
   app.use(createElectionRoutes(electionComparison));
   app.use(createSnapshotRoutes(globalSnapshot));
+
+  app.get('/api/clocks', (req, res) => res.json(clocks.getStatus()));
 
   app.get('/health', (req, res) => {
     res.json({

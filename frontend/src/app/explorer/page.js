@@ -85,7 +85,7 @@ export default function ExplorerPage() {
   // --- Tab 1 Methods ---
   const verifyChain = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/blockchain/verify');
+      const res = await fetch(`http://${location.hostname}:3001/api/blockchain/verify`);
       const data = await res.json();
       setChainValid(data);
       if(data.valid) showToast('Chain is valid');
@@ -97,7 +97,7 @@ export default function ExplorerPage() {
 
   const loadChain = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/blockchain/chain');
+      const res = await fetch(`http://${location.hostname}:3001/api/blockchain/chain`);
       const data = await res.json();
       setChainEntries(data.chain || []);
       showToast('Chain loaded');
@@ -109,7 +109,7 @@ export default function ExplorerPage() {
   // --- Tab 2 Methods ---
   const loadFiles = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/files');
+      const res = await fetch(`http://${location.hostname}:3001/api/files`);
       const data = await res.json();
       setFiles(data.files || []);
     } catch (err) {}
@@ -117,7 +117,7 @@ export default function ExplorerPage() {
 
   const loadFileStats = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/files/stats');
+      const res = await fetch(`http://${location.hostname}:3001/api/files/stats`);
       const data = await res.json();
       setFileStats(data);
     } catch (err) {}
@@ -134,7 +134,7 @@ export default function ExplorerPage() {
         mimeType: 'text/plain',
         size: fileContent.length
       };
-      const res = await fetch('http://localhost:3001/api/files', {
+      const res = await fetch(`http://${location.hostname}:3001/api/files`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -156,7 +156,7 @@ export default function ExplorerPage() {
 
   const handleDeleteFile = async (id) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/files/${id}`, { method: 'DELETE' });
+      const res = await fetch(`http://${location.hostname}:3001/api/files/${id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('File deleted');
         loadFiles();
@@ -172,7 +172,7 @@ export default function ExplorerPage() {
     setJobLoading(true);
     setJobResult(null);
     try {
-      const res = await fetch('http://localhost:3001/api/mapreduce/run', {
+      const res = await fetch(`http://${location.hostname}:3001/api/mapreduce/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobType })
@@ -190,7 +190,7 @@ export default function ExplorerPage() {
   // --- Tab 4 Methods ---
   const discoverServices = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/services/discover');
+      const res = await fetch(`http://${location.hostname}:3001/api/services/discover`);
       const data = await res.json();
       setServices(data.registry || []);
       showToast('Services discovered');
@@ -203,7 +203,7 @@ export default function ExplorerPage() {
     e.preventDefault();
     try {
       const parsedArgs = JSON.parse(invokeArgs || '{}');
-      const res = await fetch('http://localhost:3001/api/services/invoke-remote', {
+      const res = await fetch(`http://${location.hostname}:3001/api/services/invoke-remote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,14 +224,14 @@ export default function ExplorerPage() {
   // --- Tab 5 Methods ---
   const loadFaasFunctions = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/faas/functions');
+      const res = await fetch(`http://${location.hostname}:3001/api/faas/functions`);
       const data = await res.json();
       setFaasFunctions(data.functions || []);
     } catch (err) { console.error(err); }
   };
   const loadFaasExecutions = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/faas/executions');
+      const res = await fetch(`http://${location.hostname}:3001/api/faas/executions`);
       const data = await res.json();
       setFaasExecutions(data.executions || []);
     } catch (err) { console.error(err); }
@@ -239,7 +239,7 @@ export default function ExplorerPage() {
   const registerFunction = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:3001/api/faas/functions', {
+      const res = await fetch(`http://${location.hostname}:3001/api/faas/functions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: customFnName, code: customFnCode, owner: customFnOwner })
@@ -257,7 +257,7 @@ export default function ExplorerPage() {
   };
   const invokeFunction = async (id) => {
     try {
-      const res = await fetch(`http://localhost:3001/api/faas/invoke/${id}`, { method: 'POST' });
+      const res = await fetch(`http://${location.hostname}:3001/api/faas/invoke/${id}`, { method: 'POST' });
       const data = await res.json();
       setFaasResult(data);
       loadFaasExecutions();
@@ -270,19 +270,19 @@ export default function ExplorerPage() {
   // --- Tab 6 Methods ---
   const loadGatewayMetrics = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/gateway/metrics');
+      const res = await fetch(`http://${location.hostname}:3001/api/gateway/metrics`);
       setGwMetrics(await res.json());
     } catch (err) { console.error(err); }
   };
   const loadGatewayCache = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/gateway/cache');
+      const res = await fetch(`http://${location.hostname}:3001/api/gateway/cache`);
       setGwCache(await res.json());
     } catch (err) { console.error(err); }
   };
   const loadGatewayCBs = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/gateway/circuit-breakers');
+      const res = await fetch(`http://${location.hostname}:3001/api/gateway/circuit-breakers`);
       setGwCircuitBreakers(await res.json());
     } catch (err) { console.error(err); }
   };
@@ -291,7 +291,7 @@ export default function ExplorerPage() {
     try {
       const payload = { method: gwMethod, path: gwPath };
       if (gwMethod !== 'GET' && gwBody) payload.body = JSON.parse(gwBody);
-      const res = await fetch('http://localhost:3001/api/gateway/route', {
+      const res = await fetch(`http://${location.hostname}:3001/api/gateway/route`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -307,7 +307,7 @@ export default function ExplorerPage() {
   };
   const clearGatewayCache = async () => {
     try {
-      await fetch('http://localhost:3001/api/gateway/cache/clear', { method: 'POST' });
+      await fetch(`http://${location.hostname}:3001/api/gateway/cache/clear`, { method: 'POST' });
       showToast('Cache cleared');
       loadGatewayCache();
       loadGatewayMetrics();
@@ -315,7 +315,7 @@ export default function ExplorerPage() {
   };
   const resetGatewayCBs = async () => {
     try {
-      await fetch('http://localhost:3001/api/gateway/circuit-breakers/reset', { method: 'POST' });
+      await fetch(`http://${location.hostname}:3001/api/gateway/circuit-breakers/reset`, { method: 'POST' });
       showToast('Circuit breakers reset');
       loadGatewayCBs();
       loadGatewayMetrics();
@@ -325,26 +325,26 @@ export default function ExplorerPage() {
   // --- Tab 7 Methods ---
   const loadCapStatus = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/cap/status');
+      const res = await fetch(`http://${location.hostname}:3001/api/cap/status`);
       setCapStatus(await res.json());
     } catch (err) { console.error(err); }
   };
   const loadCapComparison = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/cap/comparison');
+      const res = await fetch(`http://${location.hostname}:3001/api/cap/comparison`);
       setCapComparison(await res.json());
     } catch (err) { console.error(err); }
   };
   const loadCapLog = async () => {
     try {
-      const res = await fetch('http://localhost:3001/api/cap/log');
+      const res = await fetch(`http://${location.hostname}:3001/api/cap/log`);
       const data = await res.json();
       setCapLog(data.log || []);
     } catch (err) { console.error(err); }
   };
   const switchCapMode = async (mode) => {
     try {
-      await fetch('http://localhost:3001/api/cap/mode', {
+      await fetch(`http://${location.hostname}:3001/api/cap/mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode })
@@ -356,7 +356,7 @@ export default function ExplorerPage() {
   };
   const partitionNode = async (nodeId) => {
     try {
-      await fetch('http://localhost:3001/api/cap/partition', {
+      await fetch(`http://${location.hostname}:3001/api/cap/partition`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodeId })
@@ -368,7 +368,7 @@ export default function ExplorerPage() {
   };
   const healPartitions = async () => {
     try {
-      await fetch('http://localhost:3001/api/cap/heal', { method: 'POST' });
+      await fetch(`http://${location.hostname}:3001/api/cap/heal`, { method: 'POST' });
       showToast('Partitions healed');
       loadCapStatus();
       loadCapLog();
@@ -377,7 +377,7 @@ export default function ExplorerPage() {
   const testCapWrite = async () => {
     try {
       const cmd = JSON.parse(capTestCommand);
-      const res = await fetch('http://localhost:3001/api/cap/test-write', {
+      const res = await fetch(`http://${location.hostname}:3001/api/cap/test-write`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd })
@@ -730,7 +730,7 @@ export default function ExplorerPage() {
                   <div className="card-header">
                     <div className="card-title">Execution Result</div>
                     <span className={`badge ${faasResult.success ? 'badge-success' : 'badge-danger'}`}>
-                      {faasResult.durationMs} ms
+                      {faasResult.executionTime} ms
                     </span>
                   </div>
                   <pre style={{ background: '#f5f7fa', padding: '1rem', borderRadius: '8px', overflowX: 'auto', fontSize: '0.85rem' }}>
