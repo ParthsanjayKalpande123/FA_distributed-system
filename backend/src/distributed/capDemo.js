@@ -118,6 +118,15 @@ class CAPDemonstrator {
     const status = this.getStatus();
 
     if (this.mode === 'CP') {
+      if (!status.hasQuorum) {
+        return {
+          success: false,
+          mode: 'CP',
+          error: 'NO_QUORUM',
+          explanation: 'Write REJECTED — this node cannot reach a majority. Consistency preserved at the cost of availability.',
+          ...this._log('WRITE_REJECTED_CP', { command: command.type, error: 'NO_QUORUM' })
+        };
+      }
       // Standard Raft behavior — needs leader with quorum
       try {
         const result = await this.raftNode.propose(command);

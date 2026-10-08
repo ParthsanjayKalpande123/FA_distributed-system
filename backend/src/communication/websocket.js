@@ -1,6 +1,7 @@
 // WebSocket communication for real-time updates
 const { WebSocketServer } = require('ws');
 const logger = require('../utils/logger');
+const { publishRtcSignal } = require('./redisPubSub');
 
 let wss = null;
 
@@ -22,6 +23,13 @@ function setupWebSocket(server, raftNode, gossipModule) {
   wss = new WebSocketServer({ server });
   
   wss.on('connection', (ws) => {
+    ws.on('message', (raw) => {
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'RTC_SIGNAL') publishRtcSignal(msg.data);
+      } catch { /* ignore malformed client messages */ }
+    });
+
     ws.send(JSON.stringify({
       type: 'SNAPSHOT',
       data: {

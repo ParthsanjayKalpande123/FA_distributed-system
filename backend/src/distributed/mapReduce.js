@@ -66,13 +66,10 @@ class MapReduceEngine {
         // Map: for each date, count present/absent
         const records = this.stateMachine.attendance.getAll();
         const summary = {};
-        for (const [date, students] of records.entries()) {
-          let present = 0, absent = 0;
-          for (const [, record] of students.entries()) {
-            if (record.present) present++;
-            else absent++;
-          }
-          summary[date] = { present, absent, total: present + absent };
+        for (const r of records) {
+          summary[r.date] = summary[r.date] || { present: 0, absent: 0, total: 0 };
+          if (r.present) summary[r.date].present++; else summary[r.date].absent++;
+          summary[r.date].total++;
         }
         return { type: 'attendance-summary', data: summary, nodeId: this.config.nodeId };
       }
@@ -106,7 +103,7 @@ class MapReduceEngine {
             nodeId: this.config.nodeId,
             uptime: process.uptime(),
             memoryUsage: process.memoryUsage(),
-            logLength: this.stateMachine.attendance.getAll().size + this.stateMachine.booking.getAll().length
+            logLength: this.stateMachine.attendance.getAll().length + this.stateMachine.booking.getAll().length
           }
         };
       }

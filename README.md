@@ -12,14 +12,30 @@
 - **Admin cluster monitor** with election-algorithm comparisons and a consistent global-state snapshot
 - **Docker Compose** orchestration
 
-## Communication Paradigms (Unit 2)
+## Introduction (Unit 1)
+
+| Topic | Where it shows up in CampusWatch |
+|-------|-------------------------------|
+| **Definition & goals** | Independent nodes appear as one system: any node serves reads, writes go to the leader, failures are hidden (transparency), more nodes can be added (scalability), Raft keeps them consistent |
+| **Types** | Distributed *information* system (replicated records) + distributed *computing* (MapReduce, FaaS) |
+| **Architectures** | Client–server (browser ↔ nodes), peer-to-peer (gossip, WebRTC), layered (UI → API → Raft → state machine), event-based (Redis Pub/Sub) |
+| **Design issues** | Fault tolerance (Raft, circuit breaker), consistency vs availability (CAP tab), concurrency (fair queue), scalability (gateway), heterogeneity/openness (HTTP + JSON) |
+| **Middleware** | Redis Pub/Sub (message broker), API gateway, service registry, WebSocket layer |
+| **Distributed multimedia** | WebRTC peer-to-peer channel (the same transport that carries audio/video) + WebSocket streaming |
+| **Model of distributed computation** *(self study)* | Processes exchanging messages; send/receive events ordered by Lamport/vector clocks (Clocks tab) |
+| **Virtualization** *(self study)* | Each node is a Docker container; the whole cluster runs on an AWS EC2 virtual machine |
+
+## Communication (Unit 2)
 
 | Paradigm | Implementation | Code |
 |----------|---------------|------|
-| **RPC** | HTTP POST for Raft RPCs (RequestVote, AppendEntries) | `backend/src/raft/rpc.js` |
+| **RPC** | HTTP POST for Raft RPCs (RequestVote, AppendEntries); RMI-style remote invocation | `backend/src/raft/rpc.js`, `distributed/serviceRegistry.js` |
 | **Stream-Oriented** | WebSocket push to Admin dashboard | `backend/src/communication/websocket.js` |
 | **Message-Oriented** | Redis Pub/Sub for async notifications | `backend/src/communication/redisPubSub.js` |
 | **Peer-to-Peer** | Gossip heartbeat between nodes | `backend/src/communication/gossip.js` |
+| **WebRTC** | Browser-to-browser data channel; signaling relayed over WebSocket + Redis Pub/Sub (Explorer → WebRTC P2P) | `frontend/src/app/explorer/page.js` (`WebRTCDemo`) |
+| **Names, identifiers, addresses** *(self study)* | Node IDs (`node-a`) resolved to addresses by Docker DNS; service discovery by name | `raft/config.js`, `distributed/serviceRegistry.js` |
+| **Fault tolerance** *(self study)* | Raft re-election + log catch-up, gossip failure detection, gateway circuit breaker, client failover | `raft/raftNode.js`, `distributed/gateway.js`, `frontend/src/lib/api.js` |
 
 ## Synchronization (Unit 3)
 
@@ -32,6 +48,10 @@
 | **Election** | Raft leader election (real); Bully & Ring compared in simulation | `backend/src/raft/raftNode.js`, `distributed/electionComparison.js` |
 | **Mutual exclusion** | Centralized: Raft leader serializes bookings; FIFO fair queue per resource slot | `backend/src/state-machine/booking.js` |
 | **Global state** | Consistent cut from the common committed Raft log prefix | `backend/src/distributed/globalSnapshot.js` |
+| **Deadlock detection** *(self study, Knapp)* | Local wait-for graphs per node merged by a coordinator; DFS cycle detection (centralized class) — Explorer → Deadlock Detection | `backend/src/distributed/deadlock.js` |
+| **Fair mutual exclusion** *(self study, Lodha–Kshemkalyani)* | Requests served strictly in request order (FIFO queue per slot) — the fairness property that algorithm guarantees, done here by the Raft-ordered log | `backend/src/state-machine/booking.js` |
+
+Clocks are visible live in Explorer → Clocks.
 
 ## Emerging Paradigms (Unit 4)
 
@@ -43,6 +63,8 @@
 | **Serverless** | FaaS engine (local VM sandbox) **+ real AWS Lambda** function | `distributed/faas.js`, `aws/lambda/index.mjs` |
 | **Hadoop-style MapReduce** | Map/shuffle/reduce over cluster data | `distributed/mapReduce.js` |
 | **Case study: AWS** | Whole system deployed on EC2; serverless report on Lambda | `aws/` |
+| **Case studies: Cloudflare / Megaport** | Edge cache + latency-aware routing in the API gateway | `distributed/gateway.js` |
+| **Case study: Kubernetes** | Compose stack maps 1:1 to K8s — each node → StatefulSet pod (stable name), Redis → Deployment, Docker DNS → K8s Service DNS | `docker-compose.yml` |
 | **Blockchain / distributed ledger** | Hash-chained Raft log, verifiable | `routes/blockchainRoutes.js` |
 | **Distributed DB trade-offs** | CAP demonstrator | `distributed/capDemo.js` |
 
@@ -56,6 +78,7 @@ Browser ──► EC2 t3.small (Docker Compose: 3 Raft nodes + Redis + Next.js)
 
 - **EC2**: `campuswatch` instance, security group `campuswatch-sg` (3000–3003 public, SSH from one IP), key `~/.ssh/campuswatch-key.pem`.
 - **Lambda**: `campuswatch-attendance-report` (Node.js 22, public Function URL). Its URL is passed to the nodes as `AWS_LAMBDA_URL` (in `.env`, not committed). Without it, the Lambda function simply doesn't appear in the FaaS list.
+- **Custom FaaS functions are disabled** (HTTP 403): Node's `vm` is not a security sandbox, so letting anyone on the internet register code would mean remote code execution. Set `ALLOW_CUSTOM_FAAS=true` only for local demos.
 - **Redeploy** after code changes: `aws/deploy.sh <ec2-public-ip> <lambda-function-url>`
 - **Save credits**: `aws ec2 stop-instances --instance-ids <id>` when not demoing (the public IP changes on restart).
 

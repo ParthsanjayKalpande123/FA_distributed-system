@@ -381,8 +381,8 @@ body {
   text-transform: uppercase;
 }
 .badge-pending  { background: #fef9eb; color: #92400e; border: 1px solid #fde68a; }
-.badge-approved { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-.badge-rejected { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+.badge-approved, .badge-success { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+.badge-rejected, .badge-danger { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
 .badge-info     { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
 .badge-leader   { background: #f5f3ff; color: #5b21b6; border: 1px solid #ddd6fe; }
 .badge-follower { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }
@@ -826,3 +826,4 @@ body {
   .login-right { width: 100%; }
   .role-cards { grid-template-columns: 1fr 1fr; }
 }
+.text-danger { color: #991b1b; }

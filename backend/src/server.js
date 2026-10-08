@@ -34,6 +34,8 @@ const { createElectionRoutes } = require('./routes/electionRoutes');
 const { GlobalSnapshot } = require('./distributed/globalSnapshot');
 const { createSnapshotRoutes } = require('./routes/snapshotRoutes');
 const { Clocks } = require('./distributed/clocks');
+const { DeadlockDetector } = require('./distributed/deadlock');
+const { createDeadlockRoutes } = require('./routes/deadlockRoutes');
 
 async function main() {
   const app = express();
@@ -71,6 +73,7 @@ async function main() {
   app.use(createCAPRoutes(capDemo));
   app.use(createElectionRoutes(electionComparison));
   app.use(createSnapshotRoutes(globalSnapshot));
+  app.use(createDeadlockRoutes(new DeadlockDetector(config)));
 
   app.get('/api/clocks', (req, res) => res.json(clocks.getStatus()));
 

@@ -1,6 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
-import { getUser } from '../../lib/api';
+import { useState, useEffect, useRef } from 'react';
+import { apiRequest, getUser } from '../../lib/api';
+
+// fetch-shaped wrapper over the cluster-aware client: follows the Raft leader and fails over between nodes.
+const api = async (path, opts) => {
+  const data = await apiRequest(path, opts);
+  return { ok: !data?.error, json: async () => data };
+};
 
 const Icons = {
   LogOut: () => (
@@ -9,6 +15,186 @@ const Icons = {
     </svg>
   )
 };
+
+/* ── Tab 10: Lamport / vector clocks + Cristian sync (piggybacked on gossip) ── */
+function ClocksDemo() {
+  const [nodes, setNodes] = useState([]);
+  const load = async () => setNodes(await Promise.all([3001, 3002, 3003].map(port =>
+    fetch(`http://${location.hostname}:${port}/api/clocks`, { signal: AbortSignal.timeout(2000) })
+      .then(r => r.json()).catch(() => ({ nodeId: `port ${port}`, down: true })))));
+  useEffect(() => { load(); const iv = setInterval(load, 2000); return () => clearInterval(iv); }, []);
+  return (
+    <div className="fade-in">
+      <div className="alert alert-info">
+        Every gossip heartbeat (beacon) is a send/receive event. <strong>Lamport</strong>: L = max(local, msg) + 1.
+        <strong> Vector</strong>: element-wise max, then increment own entry — compares events causally (happened-before vs concurrent).
+        <strong> Cristian</strong>: offset = serverTime + RTT/2 − localTime. Refreshes every 2 s.
+      </div>
+      <div className="grid-3">
+        {nodes.map(n => (
+          <div className="card" key={n.nodeId}>
+            <div className="card-header"><div className="card-title">{n.nodeId}</div>{n.down && <span className="badge badge-danger">down</span>}</div>
+            {!n.down && (
+              <>
+                <div className="mb-2"><strong>Lamport:</strong> {n.lamport}</div>
+                <div className="mb-2"><strong>Vector:</strong> [{Object.entries(n.vector).map(([k, v]) => `${k}:${v}`).join(', ')}]</div>
+                <div className="mb-2"><strong>Cristian offsets:</strong>
+                  {Object.entries(n.cristianOffsets).map(([peer, o]) => <div key={peer} className="text-muted">{peer}: {o.offsetMs.toFixed(1)} ms (RTT {o.rttMs} ms)</div>)}
+                </div>
+                <div className="text-muted" style={{ fontSize: '0.75rem' }}>
+                  Last events: {n.recentEvents.slice(-3).map(e => `${e.kind}(${e.peer}) L=${e.lamport}`).join(' · ')}
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── Tab 8: Distributed deadlock detection (wait-for graph) ── */
+function DeadlockDemo() {
+  const [result, setResult] = useState(null);
+  const run = async (path, body) => setResult(await apiRequest(path, { method: 'POST', body: JSON.stringify(body || {}) }));
+  return (
+    <div className="fade-in">
+      <div className="alert alert-info">
+        Each node keeps only its <strong>local wait-for graph</strong>. The seeded scenario spreads P1→P2, P2→P3, P3→P1 across three nodes, so no node sees a cycle on its own.
+        A coordinator merges all local graphs into the <strong>global WFG</strong> and searches for a cycle (Knapp's <em>centralized</em> class; others are path-pushing, edge-chasing and diffusion).
+      </div>
+      <div className="card mb-4">
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button className="btn btn-danger" onClick={() => run('/api/deadlock/demo', { withCycle: true })}>Seed deadlock (cycle) &amp; detect</button>
+          <button className="btn btn-success" onClick={() => run('/api/deadlock/demo', { withCycle: false })}>Seed without cycle &amp; detect</button>
+          <button className="btn btn-ghost" onClick={() => run('/api/deadlock/detect')}>Detect again</button>
+        </div>
+      </div>
+      {result && (
+        <div className="card fade-in">
+          <div className="card-header">
+            <div className="card-title">{result.error ? 'Error' : result.deadlocked ? 'Deadlock detected' : 'No deadlock'}</div>
+            {!result.error && <span className={`badge ${result.deadlocked ? 'badge-danger' : 'badge-success'}`}>{result.deadlocked ? result.cycle.join(' → ') : 'acyclic'}</span>}
+          </div>
+          {result.error ? <div className="text-danger">{result.error}</div> : (
+            <>
+              <table className="table">
+                <thead><tr><th>Node</th><th>Local WFG edges</th><th>Cycle visible locally?</th></tr></thead>
+                <tbody>
+                  {Object.entries(result.localGraphs).map(([node, edges]) => (
+                    <tr key={node}>
+                      <td>{node}</td>
+                      <td>{edges ? (edges.map(e => `${e.from}→${e.to}`).join(', ') || '—') : 'unreachable'}</td>
+                      <td>{result.localCycleSeen[node] ? 'Yes' : 'No'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-3"><strong>Coordinator:</strong> {result.coordinator} · <strong>Algorithm:</strong> {result.algorithm}</div>
+              {result.resolution && <div className="mt-2"><strong>Resolution:</strong> {result.resolution}</div>}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Tab 9: WebRTC peer-to-peer data channel ─────────────── */
+// Signaling (offer / answer / ICE) goes browser → WebSocket → Redis Pub/Sub → every node → other browser.
+// After that, chat messages flow directly browser-to-browser over an RTCDataChannel.
+function WebRTCDemo() {
+  const [status, setStatus] = useState('Connecting to signaling server...');
+  const [log, setLog] = useState([]);
+  const [text, setText] = useState('');
+  const r = useRef({ id: Math.random().toString(36).slice(2, 8) });
+  const add = (line) => setLog(l => [...l.slice(-40), line]);
+
+  const signal = (data) => r.current.ws?.send(JSON.stringify({ type: 'RTC_SIGNAL', data: { from: r.current.id, ...data } }));
+
+  const newPeer = () => {
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    pc.onicecandidate = e => e.candidate && signal({ kind: 'ice', to: r.current.peer, candidate: e.candidate });
+    pc.onconnectionstatechange = () => setStatus(`Peer connection: ${pc.connectionState}`);
+    pc.ondatachannel = e => bindChannel(e.channel);
+    r.current.pc = pc;
+    return pc;
+  };
+
+  const bindChannel = (ch) => {
+    r.current.ch = ch;
+    ch.onopen = () => { setStatus(`Connected directly to peer ${r.current.peer} (P2P data channel)`); add('— data channel open —'); };
+    ch.onmessage = e => add(`peer ${r.current.peer}: ${e.data}`);
+  };
+
+  useEffect(() => {
+    const port = localStorage.getItem('campuswatch_leader') || 3001;
+    const ws = new WebSocket(`ws://${location.hostname}:${port}/ws`);
+    r.current.ws = ws;
+    ws.onopen = () => setStatus(`Signaling via node on port ${port}. You are ${r.current.id}. Open this tab in a second browser window and press Connect in one of them.`);
+    ws.onmessage = async (e) => {
+      const msg = JSON.parse(e.data);
+      if (msg.type !== 'RTC_SIGNAL') return;
+      const d = msg.data;
+      if (d.from === r.current.id || (d.to && d.to !== r.current.id)) return;
+      if (d.kind === 'offer' && !r.current.pc) {
+        r.current.peer = d.from;
+        const pc = newPeer();
+        await pc.setRemoteDescription(d.sdp);
+        await pc.setLocalDescription(await pc.createAnswer());
+        signal({ kind: 'answer', to: d.from, sdp: pc.localDescription });
+        add(`offer from ${d.from} → answered`);
+      } else if (d.kind === 'answer' && r.current.pc?.signalingState === 'have-local-offer') {
+        r.current.peer = d.from;
+        await r.current.pc.setRemoteDescription(d.sdp);
+        add(`answer from ${d.from}`);
+      } else if (d.kind === 'ice' && r.current.pc && d.from === r.current.peer) {
+        await r.current.pc.addIceCandidate(d.candidate).catch(() => {});
+      }
+    };
+    ws.onclose = () => setStatus('Signaling connection closed — reload the tab.');
+    return () => { ws.close(); r.current.pc?.close(); };
+  }, []);
+
+  const connect = async () => {
+    const pc = newPeer();
+    bindChannel(pc.createDataChannel('chat'));
+    await pc.setLocalDescription(await pc.createOffer());
+    signal({ kind: 'offer', sdp: pc.localDescription });
+    add('offer sent — waiting for a peer to answer');
+  };
+
+  const send = (e) => {
+    e.preventDefault();
+    if (r.current.ch?.readyState !== 'open' || !text) return;
+    r.current.ch.send(text);
+    add(`me: ${text}`);
+    setText('');
+  };
+
+  return (
+    <div className="fade-in">
+      <div className="alert alert-info">
+        WebRTC: the cluster only relays the <strong>signaling</strong> (SDP offer/answer + ICE candidates) over WebSocket and Redis Pub/Sub.
+        Once connected, messages travel <strong>peer-to-peer</strong> between the two browsers and never touch the servers.
+      </div>
+      <div className="card mb-4">
+        <div className="mb-3">{status}</div>
+        <button className="btn btn-primary" onClick={connect} disabled={!!r.current.pc}>Connect</button>
+      </div>
+      <div className="card">
+        <div className="card-header"><div className="card-title">P2P Chat</div></div>
+        <div style={{ background: '#1e293b', color: '#f8fafc', padding: '1rem', borderRadius: '8px', fontFamily: 'monospace', fontSize: '0.85rem', minHeight: '120px', maxHeight: '260px', overflowY: 'auto' }}>
+          {log.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
+        <form onSubmit={send} style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+          <input className="form-input" value={text} onChange={e => setText(e.target.value)} placeholder="Type a message" />
+          <button className="btn btn-success" type="submit">Send</button>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 export default function ExplorerPage() {
   const [user, setUser] = useState(null);
@@ -85,7 +271,7 @@ export default function ExplorerPage() {
   // --- Tab 1 Methods ---
   const verifyChain = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/blockchain/verify`);
+      const res = await api(`/api/blockchain/verify`);
       const data = await res.json();
       setChainValid(data);
       if(data.valid) showToast('Chain is valid');
@@ -97,7 +283,7 @@ export default function ExplorerPage() {
 
   const loadChain = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/blockchain/chain`);
+      const res = await api(`/api/blockchain/chain`);
       const data = await res.json();
       setChainEntries(data.chain || []);
       showToast('Chain loaded');
@@ -109,15 +295,15 @@ export default function ExplorerPage() {
   // --- Tab 2 Methods ---
   const loadFiles = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/files`);
+      const res = await api(`/api/files`);
       const data = await res.json();
-      setFiles(data.files || []);
+      setFiles(Array.isArray(data) ? data : []);
     } catch (err) {}
   };
 
   const loadFileStats = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/files/stats`);
+      const res = await api(`/api/files/stats`);
       const data = await res.json();
       setFileStats(data);
     } catch (err) {}
@@ -134,7 +320,7 @@ export default function ExplorerPage() {
         mimeType: 'text/plain',
         size: fileContent.length
       };
-      const res = await fetch(`http://${location.hostname}:3001/api/files`, {
+      const res = await api(`/api/files`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -156,7 +342,7 @@ export default function ExplorerPage() {
 
   const handleDeleteFile = async (id) => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/files/${id}`, { method: 'DELETE' });
+      const res = await api(`/api/files/${id}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('File deleted');
         loadFiles();
@@ -172,13 +358,15 @@ export default function ExplorerPage() {
     setJobLoading(true);
     setJobResult(null);
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/mapreduce/run`, {
+      const res = await api(`/api/mapreduce/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobType })
       });
       const data = await res.json();
-      setJobResult(data);
+      if (data.error) throw new Error(data.error);
+      const r = data.phases.reduce;
+      setJobResult({ durationMs: data.duration, metrics: { nodesResponded: r.nodesResponded, nodesQueried: r.nodesQueried, respondedNodeIds: r.respondedNodes }, data: r.aggregatedData });
       showToast('Job completed');
     } catch (err) {
       showToast('Error running job', 'error');
@@ -190,9 +378,9 @@ export default function ExplorerPage() {
   // --- Tab 4 Methods ---
   const discoverServices = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/services/discover`);
+      const res = await api(`/api/services/discover`);
       const data = await res.json();
-      setServices(data.registry || []);
+      setServices(Object.entries(data).map(([nodeId, services]) => ({ nodeId, services: Array.isArray(services) ? services : [] })));
       showToast('Services discovered');
     } catch (err) {
       showToast('Error discovering services', 'error');
@@ -203,7 +391,7 @@ export default function ExplorerPage() {
     e.preventDefault();
     try {
       const parsedArgs = JSON.parse(invokeArgs || '{}');
-      const res = await fetch(`http://${location.hostname}:3001/api/services/invoke-remote`, {
+      const res = await api(`/api/services/invoke-remote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,22 +412,22 @@ export default function ExplorerPage() {
   // --- Tab 5 Methods ---
   const loadFaasFunctions = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/faas/functions`);
+      const res = await api(`/api/faas/functions`);
       const data = await res.json();
-      setFaasFunctions(data.functions || []);
+      setFaasFunctions(Array.isArray(data) ? data : []);
     } catch (err) { console.error(err); }
   };
   const loadFaasExecutions = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/faas/executions`);
+      const res = await api(`/api/faas/executions`);
       const data = await res.json();
-      setFaasExecutions(data.executions || []);
+      setFaasExecutions(Array.isArray(data) ? data : []);
     } catch (err) { console.error(err); }
   };
   const registerFunction = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/faas/functions`, {
+      const res = await api(`/api/faas/functions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: customFnName, code: customFnCode, owner: customFnOwner })
@@ -249,7 +437,7 @@ export default function ExplorerPage() {
         setCustomFnName('');
         loadFaasFunctions();
       } else {
-        showToast('Failed to register function', 'error');
+        showToast((await res.json()).error || 'Failed to register function', 'error');
       }
     } catch (err) {
       showToast('Error registering function', 'error');
@@ -257,7 +445,7 @@ export default function ExplorerPage() {
   };
   const invokeFunction = async (id) => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/faas/invoke/${id}`, { method: 'POST' });
+      const res = await api(`/api/faas/invoke/${id}`, { method: 'POST' });
       const data = await res.json();
       setFaasResult(data);
       loadFaasExecutions();
@@ -270,20 +458,26 @@ export default function ExplorerPage() {
   // --- Tab 6 Methods ---
   const loadGatewayMetrics = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/gateway/metrics`);
-      setGwMetrics(await res.json());
+      const res = await api(`/api/gateway/metrics`);
+      const m = await res.json();
+      setGwMetrics({
+        totalRequests: m.totalRequests,
+        cacheHitRate: parseFloat(m.cache?.hitRate) || 0,
+        nodeStats: Object.fromEntries((m.routing || []).map(n => [n.nodeId, { requests: n.requestCount, totalLatency: n.avgLatencyMs * n.requestCount }]))
+      });
     } catch (err) { console.error(err); }
   };
   const loadGatewayCache = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/gateway/cache`);
+      const res = await api(`/api/gateway/cache`);
       setGwCache(await res.json());
     } catch (err) { console.error(err); }
   };
   const loadGatewayCBs = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/gateway/circuit-breakers`);
-      setGwCircuitBreakers(await res.json());
+      const res = await api(`/api/gateway/circuit-breakers`);
+      const cbs = await res.json();
+      setGwCircuitBreakers(Object.fromEntries(Object.entries(cbs).map(([node, cb]) => [node, cb.state])));
     } catch (err) { console.error(err); }
   };
   const routeGatewayRequest = async (e) => {
@@ -291,12 +485,13 @@ export default function ExplorerPage() {
     try {
       const payload = { method: gwMethod, path: gwPath };
       if (gwMethod !== 'GET' && gwBody) payload.body = JSON.parse(gwBody);
-      const res = await fetch(`http://${location.hostname}:3001/api/gateway/route`, {
+      const res = await api(`/api/gateway/route`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      setGwResult(await res.json());
+      const r = await res.json();
+      setGwResult({ handledBy: r.nodeId, latencyMs: r.latency, cached: r.cached, data: r.response, error: r.error });
       showToast('Request routed via gateway');
       loadGatewayMetrics();
       loadGatewayCache();
@@ -307,7 +502,7 @@ export default function ExplorerPage() {
   };
   const clearGatewayCache = async () => {
     try {
-      await fetch(`http://${location.hostname}:3001/api/gateway/cache/clear`, { method: 'POST' });
+      await api(`/api/gateway/cache/clear`, { method: 'POST' });
       showToast('Cache cleared');
       loadGatewayCache();
       loadGatewayMetrics();
@@ -315,7 +510,7 @@ export default function ExplorerPage() {
   };
   const resetGatewayCBs = async () => {
     try {
-      await fetch(`http://${location.hostname}:3001/api/gateway/circuit-breakers/reset`, { method: 'POST' });
+      await api(`/api/gateway/circuit-breakers/reset`, { method: 'POST' });
       showToast('Circuit breakers reset');
       loadGatewayCBs();
       loadGatewayMetrics();
@@ -325,26 +520,32 @@ export default function ExplorerPage() {
   // --- Tab 7 Methods ---
   const loadCapStatus = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/cap/status`);
-      setCapStatus(await res.json());
+      const res = await api(`/api/cap/status`);
+      const st = await res.json();
+      setCapStatus({ ...st, quorum: st.hasQuorum, partitionedNodes: st.partitionedNodes || [] });
     } catch (err) { console.error(err); }
   };
   const loadCapComparison = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/cap/comparison`);
-      setCapComparison(await res.json());
+      const res = await api(`/api/cap/comparison`);
+      const cmp = await res.json();
+      setCapComparison(Object.entries(cmp).map(([mode, c]) => ({ mode, ...c, examples: c.example })));
     } catch (err) { console.error(err); }
   };
   const loadCapLog = async () => {
     try {
-      const res = await fetch(`http://${location.hostname}:3001/api/cap/log`);
+      const res = await api(`/api/cap/log`);
       const data = await res.json();
-      setCapLog(data.log || []);
+      setCapLog((Array.isArray(data) ? data : []).map(l => ({
+        timestamp: l.timestamp,
+        message: `${l.event} ${JSON.stringify(l.details)}`,
+        type: l.event.includes('REJECTED') ? 'error' : l.event.includes('SUCCESS') ? 'success' : 'info'
+      })));
     } catch (err) { console.error(err); }
   };
   const switchCapMode = async (mode) => {
     try {
-      await fetch(`http://${location.hostname}:3001/api/cap/mode`, {
+      await api(`/api/cap/mode`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode })
@@ -356,7 +557,7 @@ export default function ExplorerPage() {
   };
   const partitionNode = async (nodeId) => {
     try {
-      await fetch(`http://${location.hostname}:3001/api/cap/partition`, {
+      await api(`/api/cap/partition`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ nodeId })
@@ -368,7 +569,7 @@ export default function ExplorerPage() {
   };
   const healPartitions = async () => {
     try {
-      await fetch(`http://${location.hostname}:3001/api/cap/heal`, { method: 'POST' });
+      await api(`/api/cap/heal`, { method: 'POST' });
       showToast('Partitions healed');
       loadCapStatus();
       loadCapLog();
@@ -377,7 +578,7 @@ export default function ExplorerPage() {
   const testCapWrite = async () => {
     try {
       const cmd = JSON.parse(capTestCommand);
-      const res = await fetch(`http://${location.hostname}:3001/api/cap/test-write`, {
+      const res = await api(`/api/cap/test-write`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd })
@@ -422,6 +623,9 @@ export default function ExplorerPage() {
             <button className={`btn ${activeTab === 5 ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(5)}>⚡ Serverless / FaaS</button>
             <button className={`btn ${activeTab === 6 ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(6)}>🌐 API Gateway</button>
             <button className={`btn ${activeTab === 7 ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(7)}>⚖️ CAP Theorem</button>
+            <button className={`btn ${activeTab === 8 ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(8)}>🔒 Deadlock Detection</button>
+            <button className={`btn ${activeTab === 9 ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(9)}>📡 WebRTC P2P</button>
+            <button className={`btn ${activeTab === 10 ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab(10)}>⏱️ Clocks</button>
           </div>
 
           {/* Tab 1: Blockchain / DLT */}
@@ -522,7 +726,7 @@ export default function ExplorerPage() {
                         <td>{f.size} bytes</td>
                         <td>{new Date(f.createdAt).toLocaleString()}</td>
                         <td className="gap-2">
-                          <button className="btn btn-sm btn-ghost" onClick={() => setViewedFile(f)}>View</button>
+                          <button className="btn btn-sm btn-ghost" onClick={async () => setViewedFile(await (await api(`/api/files/${f.id}`)).json())}>View</button>
                           <button className="btn btn-sm btn-danger" onClick={() => handleDeleteFile(f.id)}>Delete</button>
                         </td>
                       </tr>
@@ -750,7 +954,7 @@ export default function ExplorerPage() {
                       <tr key={idx}>
                         <td>{exec.functionName}</td>
                         <td>{exec.nodeId}</td>
-                        <td>{exec.durationMs}</td>
+                        <td>{exec.executionTime}</td>
                         <td>{exec.success ? '✅' : '❌'}</td>
                         <td>{new Date(exec.timestamp).toLocaleString()}</td>
                       </tr>
@@ -854,7 +1058,7 @@ export default function ExplorerPage() {
                     {(gwCache.entries || []).map(entry => (
                       <tr key={entry.key}>
                         <td style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.key}</td>
-                        <td>{Math.round(entry.ageMs / 1000)}</td>
+                        <td>{Math.round(entry.age / 1000)}</td>
                         <td>{entry.hits}</td>
                         <td>{entry.expired ? 'Yes' : 'No'}</td>
                       </tr>
@@ -956,6 +1160,10 @@ export default function ExplorerPage() {
               </div>
             </div>
           )}
+
+          {activeTab === 8 && <DeadlockDemo />}
+          {activeTab === 9 && <WebRTCDemo />}
+          {activeTab === 10 && <ClocksDemo />}
         </div>
       </div>
 

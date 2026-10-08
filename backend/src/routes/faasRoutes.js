@@ -22,6 +22,9 @@ function createFaaSRoutes(faasEngine) {
   // POST /api/faas/functions - register a new function
   router.post('/api/faas/functions', (req, res) => {
     try {
+      if (process.env.ALLOW_CUSTOM_FAAS !== 'true') {
+        return res.status(403).json({ error: 'Custom functions are disabled on this deployment (set ALLOW_CUSTOM_FAAS=true to enable locally). Node vm is not a security sandbox.' });
+      }
       const { name, code, owner } = req.body;
       if (!name || !code) {
         return res.status(400).json({ error: 'name and code are required' });

@@ -9,7 +9,7 @@ const REDIS_OPTIONS = {
   maxRetriesPerRequest: 0,
   enableOfflineQueue: false,
   lazyConnect: true,
-  retryStrategy: () => null, // stop retrying on connection failure
+  retryStrategy: (times) => Math.min(times * 500, 5000), // keep retrying: Redis may start after the nodes
 };
 
 function setupRedisPubSub(config, raftNode, wsBroadcast) {
@@ -27,9 +27,9 @@ function setupRedisPubSub(config, raftNode, wsBroadcast) {
   pubClient.on('error', () => {}); // silent — Redis is optional
   subClient.on('error', () => {}); // silent — Redis is optional
 
-  // Subscribe only after the connection is established (lazyConnect: true)
-  subClient.on('connect', () => {
-    subClient.subscribe('campuswatch:leader-change', 'campuswatch:booking-notifications', (err) => {
+  // Subscribe only once the connection is ready (lazyConnect: true, no offline queue)
+  subClient.on('ready', () => { // 'connect' fires before commands are accepted
+    subClient.subscribe('campuswatch:leader-change', 'campuswatch:booking-notifications', 'campuswatch:rtc', (err) => {
       if (err) logger.warn('Redis subscribe error', err.message);
     });
   });
@@ -42,6 +42,8 @@ function setupRedisPubSub(config, raftNode, wsBroadcast) {
       const data = JSON.parse(message);
       if (channel === 'campuswatch:booking-notifications') {
         wsBroadcast('BOOKING_NOTIFICATION', data);
+      } else if (channel === 'campuswatch:rtc') {
+        wsBroadcast('RTC_SIGNAL', data);
       }
     } catch (err) {
       logger.warn('Failed to parse redis message', err.message);
@@ -66,6 +68,14 @@ function publishBookingNotification(data) {
   }
 }
 
+// WebRTC signaling (offer/answer/ICE) relayed to browsers connected to any node
+function publishRtcSignal(data) {
+  if (pubClient) {
+    pubClient.publish('campuswatch:rtc', JSON.stringify(data))
+      .catch(err => logger.warn('Publish error', err.message));
+  }
+}
+
 function shutdown() {
   if (pubClient) pubClient.disconnect();
   if (subClient) subClient.disconnect();
@@ -74,5 +84,6 @@ function shutdown() {
 module.exports = {
   setupRedisPubSub,
   publishBookingNotification,
+  publishRtcSignal,
   shutdown
 };
