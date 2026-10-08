@@ -1,4 +1,5 @@
 const vm = require('vm');
+const axios = require('axios');
 const logger = require('../utils/logger');
 
 class FaaSEngine {
@@ -18,15 +19,12 @@ class FaaSEngine {
       id: 'builtin-attendance-report',
       name: 'Attendance Report Generator',
       code: `
-        const records = context.stateMachine.attendance.getAll();
-        const report = [];
-        for (const [date, students] of records.entries()) {
-          let present = 0, absent = 0;
-          for (const [studentId, record] of students.entries()) {
-            if (record.present) present++; else absent++;
-          }
-          report.push({ date, present, absent, total: present + absent, percentage: present > 0 ? Math.round(present / (present + absent) * 100) : 0 });
+        const byDate = {};
+        for (const r of context.stateMachine.attendance.getAll()) {
+          byDate[r.date] = byDate[r.date] || { date: r.date, present: 0, absent: 0 };
+          if (r.present) byDate[r.date].present++; else byDate[r.date].absent++;
         }
+        const report = Object.values(byDate).map(d => ({ ...d, total: d.present + d.absent, percentage: Math.round(d.present / (d.present + d.absent) * 100) }));
         return { type: 'attendance-report', generatedAt: new Date().toISOString(), data: report };
       `,
       owner: 'system',
@@ -48,6 +46,18 @@ class FaaSEngine {
       builtin: true,
       createdAt: new Date().toISOString()
     });
+
+    // Built-in: the same report, but executed on real AWS Lambda (Unit 4 — serverless on AWS)
+    if (process.env.AWS_LAMBDA_URL) {
+      this.functions.set('aws-lambda-attendance-report', {
+        id: 'aws-lambda-attendance-report',
+        name: 'Attendance Report (AWS Lambda)',
+        remote: process.env.AWS_LAMBDA_URL,
+        owner: 'aws-lambda',
+        builtin: true,
+        createdAt: new Date().toISOString()
+      });
+    }
 
     // Built-in 3: System health check
     this.functions.set('builtin-health-check', {
@@ -82,7 +92,7 @@ class FaaSEngine {
    * Execute a function by ID in a sandboxed VM context.
    * Returns { result, executionTime, nodeId }.
    */
-  execute(functionId) {
+  async execute(functionId) {
     const func = this.functions.get(functionId);
     if (!func) {
       throw new Error(`Function '${functionId}' not found`);
@@ -92,6 +102,11 @@ class FaaSEngine {
     logger.info(`FaaS: Executing function: ${func.name} (${functionId})`);
 
     try {
+      if (func.remote) {
+        const { data } = await axios.post(func.remote, { records: this.stateMachine.attendance.getAll() }, { timeout: 10000 });
+        return this._record({ functionId, functionName: func.name, nodeId: this.config.nodeId, executionTime: Date.now() - startTime, success: true, result: data, timestamp: new Date().toISOString() });
+      }
+
       // Create a sandboxed context with limited access
       const sandbox = {
         context: {
@@ -126,11 +141,7 @@ class FaaSEngine {
         timestamp: new Date().toISOString()
       };
 
-      // Keep execution log (last 50)
-      this.executionLog.push(execution);
-      if (this.executionLog.length > 50) this.executionLog.shift();
-
-      return execution;
+      return this._record(execution);
     } catch (err) {
       const executionTime = Date.now() - startTime;
       const execution = {
@@ -142,10 +153,15 @@ class FaaSEngine {
         error: err.message,
         timestamp: new Date().toISOString()
       };
-      this.executionLog.push(execution);
-      if (this.executionLog.length > 50) this.executionLog.shift();
-      return execution;
+      return this._record(execution);
     }
+  }
+
+  // Keep execution log (last 50)
+  _record(execution) {
+    this.executionLog.push(execution);
+    if (this.executionLog.length > 50) this.executionLog.shift();
+    return execution;
   }
 
   /**

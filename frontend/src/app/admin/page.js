@@ -97,7 +97,7 @@ export default function AdminDashboard() {
       const result = {};
       await Promise.all(NODES.map(async node => {
         try {
-          const res = await fetch(`http://localhost:${node.port}/health`, {
+          const res = await fetch(`http://${location.hostname}:${node.port}/health`, {
             signal: AbortSignal.timeout(2000),
           });
           if (res.ok) {
@@ -123,7 +123,7 @@ export default function AdminDashboard() {
 
   const handleCrash = async (port) => {
     try {
-      await fetch(`http://localhost:${port}/api/simulate-crash`, { method: 'POST' });
+      await fetch(`http://${location.hostname}:${port}/api/simulate-crash`, { method: 'POST' });
     } catch { /* node may go down before responding */ }
   };
 

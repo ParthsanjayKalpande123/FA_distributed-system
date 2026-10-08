@@ -4,8 +4,9 @@ const { sendGossipPing } = require('../raft/rpc');
 const logger = require('../utils/logger');
 
 class GossipModule extends EventEmitter {
-  constructor(config) {
+  constructor(config, clocks) {
     super();
+    this.clocks = clocks;
     this.peers = config.peers;
     this.nodeId = config.nodeId;
     this.gossipInterval = config.gossipInterval;
@@ -34,13 +35,17 @@ class GossipModule extends EventEmitter {
     let statusChanged = false;
     
     await Promise.all(this.peers.map(async (peer) => {
+      const sentAt = Date.now();
       const response = await sendGossipPing(peer, {
         senderId: this.nodeId,
-        timestamp: Date.now()
+        timestamp: sentAt,
+        clock: this.clocks.send(peer.id)
       });
       
       if (response && response.status === 'pong') {
         this.lastSeen[peer.id] = Date.now();
+        this.clocks.receive(peer.id, response.clock);
+        this.clocks.cristian(peer.id, sentAt, response.timestamp, Date.now());
         if (this.peerStatus[peer.id] !== 'alive') {
           this.peerStatus[peer.id] = 'alive';
           statusChanged = true;
@@ -64,9 +69,10 @@ class GossipModule extends EventEmitter {
     }
   }
 
-  handlePing({ senderId, timestamp }) {
+  handlePing({ senderId, clock }) {
     this.lastSeen[senderId] = Date.now();
-    return { status: 'pong', nodeId: this.nodeId, timestamp: Date.now() };
+    this.clocks.receive(senderId, clock);
+    return { status: 'pong', nodeId: this.nodeId, timestamp: Date.now(), clock: this.clocks.send(senderId) };
   }
 
   getPeerHealth() {

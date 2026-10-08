@@ -35,9 +35,9 @@ function createFaaSRoutes(faasEngine) {
   });
 
   // POST /api/faas/invoke/:id - execute a function
-  router.post('/api/faas/invoke/:id', (req, res) => {
+  router.post('/api/faas/invoke/:id', async (req, res) => {
     try {
-      const result = faasEngine.execute(req.params.id);
+      const result = await faasEngine.execute(req.params.id);
       res.json(result);
     } catch (error) {
       res.status(400).json({ error: error.message });
