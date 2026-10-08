@@ -7,5 +7,5 @@ KEY="$HOME/.ssh/campuswatch-key.pem"
 cd "$(dirname "$0")/.."
 tar czf - --exclude=node_modules --exclude=.next --exclude=.git . |
   ssh -i "$KEY" -o StrictHostKeyChecking=accept-new "$HOST" 'mkdir -p campuswatch && tar xzf - -C campuswatch'
-ssh -i "$KEY" "$HOST" "cd campuswatch && echo 'AWS_LAMBDA_URL=$2' > .env && sudo docker compose up -d --build"
+ssh -i "$KEY" "$HOST" "cd campuswatch && echo 'AWS_LAMBDA_URL=$2' > .env && sudo docker compose -f docker-compose.yml -f aws/docker-compose.aws.yml up -d --build"
 echo "Frontend: http://$1:3000"

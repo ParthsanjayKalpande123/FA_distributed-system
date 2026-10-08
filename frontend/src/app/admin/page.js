@@ -121,6 +121,12 @@ export default function AdminDashboard() {
     feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [events]);
 
+  const handleRecover = async (port) => {
+    try {
+      await fetch(`http://${location.hostname}:${port}/api/simulate-recover`, { method: 'POST' });
+    } catch { /* container itself is down: restart it with docker compose start */ }
+  };
+
   const handleCrash = async (port) => {
     try {
       await fetch(`http://${location.hostname}:${port}/api/simulate-crash`, { method: 'POST' });
@@ -262,14 +268,13 @@ export default function AdminDashboard() {
                   </div>
 
                   <button
-                    className={`btn btn-block btn-sm ${isAlive ? 'btn-danger' : 'btn-ghost'}`}
-                    disabled={!isAlive}
-                    onClick={() => handleCrash(node.port)}
+                    className={`btn btn-block btn-sm ${isAlive ? 'btn-danger' : 'btn-success'}`}
+                    onClick={() => isAlive ? handleCrash(node.port) : handleRecover(node.port)}
                   >
                     {isAlive ? (
                       <><Icons.Zap /> Simulate Crash</>
                     ) : (
-                      <><Icons.Ban /> Node Stopped</>
+                      <><Icons.Ban /> Recover Node</>
                     )}
                   </button>
                 </div>

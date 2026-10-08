@@ -79,6 +79,7 @@ Browser ──► EC2 t3.small (Docker Compose: 3 Raft nodes + Redis + Next.js)
 - **EC2**: `campuswatch` instance, security group `campuswatch-sg` (3000–3003 public, SSH from one IP), key `~/.ssh/campuswatch-key.pem`.
 - **Lambda**: `campuswatch-attendance-report` (Node.js 22, public Function URL). Its URL is passed to the nodes as `AWS_LAMBDA_URL` (in `.env`, not committed). Without it, the Lambda function simply doesn't appear in the FaaS list.
 - **Custom FaaS functions are disabled** (HTTP 403): Node's `vm` is not a security sandbox, so letting anyone on the internet register code would mean remote code execution. Set `ALLOW_CUSTOM_FAAS=true` only for local demos.
+- **CloudWatch Logs**: each node's logs go to log group `/campuswatch` (streams `node-a`, `node-b`, `node-c`, 7-day retention) via the Docker `awslogs` driver (`aws/docker-compose.aws.yml`, EC2 only). Crashes, elections and recoveries show up there. The instance role `campuswatch-ec2-role` can only write to that log group.
 - **Redeploy** after code changes: `aws/deploy.sh <ec2-public-ip> <lambda-function-url>`
 - **Save credits**: `aws ec2 stop-instances --instance-ids <id>` when not demoing (the public IP changes on restart).
 
@@ -105,6 +106,12 @@ docker compose up --build
 7. **Admin** → compare Raft elections with Bully and Ring simulations, then capture a consistent global-state snapshot from the common applied log prefix. Bully and Ring are simulations, not cluster protocols; estimated metrics are illustrative. The snapshot excludes in-flight messages and is not a Chandy–Lamport implementation.
 
 ## Killing a Node (Failover Demo)
+
+From the **Admin** dashboard: **Simulate Crash** on any node → it stops Raft and gossip and refuses all traffic (the
+others detect it via gossip and re-elect a leader if needed) → **Recover Node** → it rejoins as a follower and
+catches up from the leader. The crashed node keeps its Raft log, as Raft assumes term/vote/log are on stable storage.
+
+For a real process failure, stop the container itself:
 
 ```bash
 # Stop a node

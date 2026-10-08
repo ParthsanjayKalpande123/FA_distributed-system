@@ -14,5 +14,6 @@ module.exports = {
   info: (msg, data) => console.log(formatMessage('INFO', msg, data)),
   warn: (msg, data) => console.warn(formatMessage('WARN', msg, data)),
   error: (msg, data) => console.error(formatMessage('ERROR', msg, data)),
-  debug: (msg, data) => console.debug(formatMessage('DEBUG', msg, data))
+  // per-RPC debug lines (several per second) only when DEBUG is set, to keep CloudWatch log volume small
+  debug: (msg, data) => process.env.DEBUG && console.debug(formatMessage('DEBUG', msg, data))
 };

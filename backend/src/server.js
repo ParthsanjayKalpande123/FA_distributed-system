@@ -8,7 +8,7 @@ const logger = require('./utils/logger');
 const { RaftNode } = require('./raft/raftNode');
 const { StateMachine } = require('./state-machine');
 const { GossipModule } = require('./communication/gossip');
-const { setupWebSocket, broadcastEvent } = require('./communication/websocket');
+const { setupWebSocket, broadcastEvent, closeAllClients } = require('./communication/websocket');
 const redisPubSub = require('./communication/redisPubSub');
 
 const { createRaftRoutes } = require('./routes/raftRoutes');
@@ -42,6 +42,12 @@ async function main() {
   app.use(cors());
   app.use(express.json());
 
+  // Simulated crash: Raft + gossip stop and the node refuses all traffic (503) until recovered.
+  let crashed = false;
+  app.use((req, res, next) => (crashed && req.path !== '/api/simulate-recover')
+    ? res.status(503).json({ error: 'NODE_CRASHED', nodeId: config.nodeId })
+    : next());
+
   const server = http.createServer(app);
 
   const stateMachine = new StateMachine();
@@ -74,6 +80,25 @@ async function main() {
   app.use(createElectionRoutes(electionComparison));
   app.use(createSnapshotRoutes(globalSnapshot));
   app.use(createDeadlockRoutes(new DeadlockDetector(config)));
+
+  app.post('/api/simulate-crash', (req, res) => {
+    logger.warn('SIMULATED CRASH: stopping Raft and gossip, refusing all requests');
+    crashed = true;
+    raftNode.stop();
+    gossipModule.stop();
+    closeAllClients();
+    res.json({ success: true, nodeId: config.nodeId, message: 'Node crashed' });
+  });
+
+  app.post('/api/simulate-recover', (req, res) => {
+    if (crashed) {
+      logger.warn('RECOVERED: rejoining cluster as follower, will catch up from the leader');
+      crashed = false;
+      raftNode.start();
+      gossipModule.start();
+    }
+    res.json({ success: true, nodeId: config.nodeId, message: 'Node recovered' });
+  });
 
   app.get('/api/clocks', (req, res) => res.json(clocks.getStatus()));
 

@@ -1,0 +1,15 @@
+# EC2 only (used by aws/deploy.sh): ship each Raft node's logs to CloudWatch Logs,
+# log group /campuswatch, one stream per node. Needs the instance role campuswatch-ec2-role.
+x-awslogs: &awslogs
+  driver: awslogs
+  options: &opts
+    awslogs-region: ap-southeast-2
+    awslogs-group: /campuswatch
+
+services:
+  node-a:
+    logging: { <<: *awslogs, options: { <<: *opts, awslogs-stream: node-a } }
+  node-b:
+    logging: { <<: *awslogs, options: { <<: *opts, awslogs-stream: node-b } }
+  node-c:
+    logging: { <<: *awslogs, options: { <<: *opts, awslogs-stream: node-c } }

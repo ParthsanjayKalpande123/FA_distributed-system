@@ -64,7 +64,13 @@ function setupWebSocket(server, raftNode, gossipModule) {
   }, 30000);
 }
 
+// Drop every client (used by a simulated crash so dashboards fail over to another node)
+function closeAllClients() {
+  if (wss) wss.clients.forEach(client => client.terminate());
+}
+
 module.exports = {
   setupWebSocket,
+  closeAllClients,
   broadcastEvent
 };

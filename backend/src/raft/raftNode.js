@@ -32,6 +32,14 @@ class RaftNode extends EventEmitter {
     this.resetElectionTimer();
   }
 
+  // Simulated crash: stop all timers. Term, vote and log are kept, as Raft assumes they are on stable storage.
+  stop() {
+    if (this.electionTimer) clearTimeout(this.electionTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+    this.state = 'follower';
+    this.leaderId = null;
+  }
+
   resetElectionTimer() {
     if (this.electionTimer) clearTimeout(this.electionTimer);
     
