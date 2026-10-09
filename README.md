@@ -34,7 +34,7 @@
 | **Stream-Oriented** | WebSocket push to Admin dashboard | `backend/src/communication/websocket.js` |
 | **Message-Oriented** | Redis Pub/Sub for async notifications | `backend/src/communication/redisPubSub.js` |
 | **Peer-to-Peer** | Gossip heartbeat between nodes | `backend/src/communication/gossip.js` |
-| **WebRTC** | Browser-to-browser data channel; signaling relayed over WebSocket + Redis Pub/Sub (Explorer → WebRTC P2P) | `frontend/src/app/explorer/page.js` (`WebRTCDemo`) |
+| **WebRTC** | Browser-to-browser data channel; signaling relayed over WebSocket + Redis Pub/Sub (Admin → WebRTC Peer-to-Peer Chat) | `frontend/src/components/dashboard/SyllabusDemos.js` |
 | **Names, identifiers, addresses** *(self study)* | Node IDs (`node-a`) resolved to addresses by Docker DNS; service discovery by name | `raft/config.js`, `distributed/serviceRegistry.js` |
 | **Fault tolerance** *(self study)* | Raft re-election + log catch-up, gossip failure detection, gateway circuit breaker, client failover | `raft/raftNode.js`, `distributed/gateway.js`, `frontend/src/lib/api.js` |
 
@@ -49,10 +49,10 @@
 | **Election** | Raft leader election (real); Bully & Ring compared in simulation | `backend/src/raft/raftNode.js`, `distributed/electionComparison.js` |
 | **Mutual exclusion** | Centralized: Raft leader serializes bookings; FIFO fair queue per resource slot | `backend/src/state-machine/booking.js` |
 | **Global state** | Consistent cut from the common committed Raft log prefix | `backend/src/distributed/globalSnapshot.js` |
-| **Deadlock detection** *(self study, Knapp)* | Local wait-for graphs per node merged by a coordinator; DFS cycle detection (centralized class) — Explorer → Deadlock Detection | `backend/src/distributed/deadlock.js` |
+| **Deadlock detection** *(self study, Knapp)* | Local wait-for graphs per node merged by a coordinator; DFS cycle detection (centralized class) — Admin → Distributed Deadlock Detection | `backend/src/distributed/deadlock.js` |
 | **Fair mutual exclusion** *(self study, Lodha–Kshemkalyani)* | Requests served strictly in request order (FIFO queue per slot) — the fairness property that algorithm guarantees, done here by the Raft-ordered log | `backend/src/state-machine/booking.js` |
 
-Clocks are visible live in Explorer → Clocks.
+Clocks are visible live in Admin → Clock Synchronization.
 
 ## Emerging Paradigms (Unit 4)
 
