@@ -72,17 +72,19 @@ Clocks are visible live in Explorer → Clocks.
 ## AWS Deployment (Region `ap-southeast-2`)
 
 ```
-Browser ──► EC2 t3.small (Docker Compose: 3 Raft nodes + Redis + Next.js)
-                │  FaaS "Attendance Report (AWS Lambda)"
-                └──► Lambda Function URL ── campuswatch-attendance-report
+            ┌──► EC2 A  campuswatch-a (t3.small): node-a :3001 + Redis + Next.js :3000 ──► Lambda Function URL
+Browser ────┼──► EC2 B  campuswatch-b (t3.micro): node-b :3002                       (campuswatch-attendance-report)
+            └──► EC2 C  campuswatch-c (t3.micro): node-c :3003
+     Raft RPC + gossip between instances over VPC private IPs; node-b/node-c use Redis on EC2 A
 ```
 
-- **EC2**: `campuswatch` instance, security group `campuswatch-sg` (3000–3003 public, SSH from one IP), key `~/.ssh/campuswatch-key.pem`.
+- **EC2**: three instances, one Raft node each (`campuswatch-a/b/c`), security group `campuswatch-sg` (3000–3003 public, Redis 6379 only from the group, SSH from one IP), key `~/.ssh/campuswatch-key.pem`. Stopping an instance in the EC2 console is a real node failure — the other two keep a majority and re-elect.
+- **Multi-host config**: `PEERS` accepts `node-b@<host>:3002`; the frontend learns each node's public host at runtime from `/cluster-config.js` (`NODE_HOSTS`). Both default to the single-machine Docker Compose setup.
 - **Lambda**: `campuswatch-attendance-report` (Node.js 22, public Function URL). Its URL is passed to the nodes as `AWS_LAMBDA_URL` (in `.env`, not committed). Without it, the Lambda function simply doesn't appear in the FaaS list.
 - **Custom FaaS functions are disabled** (HTTP 403): Node's `vm` is not a security sandbox, so letting anyone on the internet register code would mean remote code execution. Set `ALLOW_CUSTOM_FAAS=true` only for local demos.
 - **CloudWatch Logs**: each node's logs go to log group `/campuswatch` (streams `node-a`, `node-b`, `node-c`, 7-day retention) via the Docker `awslogs` driver (`aws/docker-compose.aws.yml`, EC2 only). Crashes, elections and recoveries show up there. The instance role `campuswatch-ec2-role` can only write to that log group.
-- **Redeploy** after code changes: `aws/deploy.sh <ec2-public-ip> <lambda-function-url>`
-- **Save credits**: `aws ec2 stop-instances --instance-ids <id>` when not demoing (the public IP changes on restart).
+- **Redeploy** after code changes: `aws/deploy.sh <A-public-ip> <B-public-ip> <C-public-ip> <lambda-function-url>` (uses `aws/docker-compose.multi.yml`)
+- **Save credits**: stop all three instances when not demoing; public IPs change on restart, so redeploy with the new IPs afterwards.
 
 ## Quick Start
 

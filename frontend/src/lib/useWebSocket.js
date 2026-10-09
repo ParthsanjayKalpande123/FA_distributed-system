@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { nodeBase } from './api';
 
 // Accept an array of ports; defaults to all three Raft nodes.
 // On disconnect the hook cycles through every port until it finds
@@ -21,7 +22,7 @@ export function useWebSocket(ports = [3001, 3002, 3003]) {
 
       const port = portList[attemptIndexRef.current % portList.length];
       console.log(`[WS] Attempting connection to port ${port}...`);
-      const ws = new WebSocket(`ws://${location.hostname}:${port}/ws`);
+      const ws = new WebSocket(`${nodeBase(port).replace(/^http/, 'ws')}/ws`);
       wsRef.current = ws;
 
       ws.onopen = () => {

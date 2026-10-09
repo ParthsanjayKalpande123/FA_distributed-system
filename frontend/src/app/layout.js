@@ -11,6 +11,8 @@ export default function RootLayout({ children }) {
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* Where each Raft node lives (runtime config, see app/cluster-config.js/route.js) */}
+        <script src="/cluster-config.js" />
       </head>
       <body>{children}</body>
     </html>

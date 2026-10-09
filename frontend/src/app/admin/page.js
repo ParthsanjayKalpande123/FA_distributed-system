@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-import { apiRequest, getUser } from '../../lib/api';
+import { apiRequest, getUser, nodeBase } from '../../lib/api';
 import { useWebSocket } from '../../lib/useWebSocket';
 import { AdminSystems } from '../../components/dashboard/WorkflowCapabilities';
 
@@ -98,7 +98,7 @@ export default function AdminDashboard() {
       const result = {};
       await Promise.all(NODES.map(async node => {
         try {
-          const res = await fetch(`http://${location.hostname}:${node.port}/health`, {
+          const res = await fetch(`${nodeBase(node.port)}/health`, {
             signal: AbortSignal.timeout(2000),
           });
           if (res.ok) {
@@ -124,13 +124,13 @@ export default function AdminDashboard() {
 
   const handleRecover = async (port) => {
     try {
-      await fetch(`http://${location.hostname}:${port}/api/simulate-recover`, { method: 'POST' });
+      await fetch(`${nodeBase(port)}/api/simulate-recover`, { method: 'POST' });
     } catch { /* container itself is down: restart it with docker compose start */ }
   };
 
   const handleCrash = async (port) => {
     try {
-      await fetch(`http://${location.hostname}:${port}/api/simulate-crash`, { method: 'POST' });
+      await fetch(`${nodeBase(port)}/api/simulate-crash`, { method: 'POST' });
     } catch { /* node may go down before responding */ }
   };
 

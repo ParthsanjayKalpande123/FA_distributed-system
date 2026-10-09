@@ -1,0 +1,19 @@
+# Multi-EC2 layout (used by aws/deploy-multi.sh), one Raft node per instance:
+#   EC2 A: node-a + Redis + frontend    EC2 B: node-b    EC2 C: node-c
+# Nodes reach each other over the VPC private IPs; the browser uses the public IPs.
+# Values come from .env written by the deploy script: A_PRIV/B_PRIV/C_PRIV, A_PUB/B_PUB/C_PUB.
+services:
+  node-a:
+    environment:
+      PEERS: "node-b@${B_PRIV}:3002,node-c@${C_PRIV}:3003"
+  node-b:
+    environment:
+      PEERS: "node-a@${A_PRIV}:3001,node-c@${C_PRIV}:3003"
+      REDIS_URL: "redis://${A_PRIV}:6379"
+  node-c:
+    environment:
+      PEERS: "node-a@${A_PRIV}:3001,node-b@${B_PRIV}:3002"
+      REDIS_URL: "redis://${A_PRIV}:6379"
+  frontend:
+    environment:
+      NODE_HOSTS: "${A_PUB},${B_PUB},${C_PUB}"

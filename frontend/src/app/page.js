@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { nodeBase } from '../lib/api';
 
 /* ── Inline SVG icons (no emoji, no external deps) ──────── */
 const Icons = {
@@ -82,7 +83,7 @@ const DEMO_ACCOUNTS = [
 async function loginRequest(userId, password) {
   for (const port of [3001, 3002, 3003]) {
     try {
-      const res = await fetch(`http://${location.hostname}:${port}/api/login`, {
+      const res = await fetch(`${nodeBase(port)}/api/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, password }),

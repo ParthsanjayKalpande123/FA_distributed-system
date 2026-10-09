@@ -12,6 +12,15 @@
 const NODE_PORTS = [3001, 3002, 3003];
 const PORT_MAP = { 'node-a': 3001, 'node-b': 3002, 'node-c': 3003 };
 
+/**
+ * Base URL of the node listening on `port`. Nodes may run on different machines:
+ * /cluster-config.js (loaded in the layout) sets window.CW_NODE_HOSTS = { 3001: host, ... };
+ * without it every node is assumed to be on the same host as the page.
+ */
+export function nodeBase(port) {
+  return `http://${window.CW_NODE_HOSTS?.[port] || location.hostname}:${port}`;
+}
+
 /** Remember which port was last known to work (or be leader). */
 function getPreferredPort() {
   if (typeof window === 'undefined') return NODE_PORTS[0];
@@ -59,7 +68,7 @@ export async function apiRequest(path, options = {}) {
 
   for (const port of orderedPorts) {
     try {
-      const url = `http://${location.hostname}:${port}${path}`;
+      const url = `${nodeBase(port)}${path}`;
       const response = await fetch(url, {
         ...fetchOptions,
         signal: AbortSignal.timeout(3000),
@@ -75,7 +84,7 @@ export async function apiRequest(path, options = {}) {
           setPreferredPort(leaderPort);
           // Retry directly on the leader
           try {
-            const leaderUrl = `http://${location.hostname}:${leaderPort}${path}`;
+            const leaderUrl = `${nodeBase(leaderPort)}${path}`;
             const leaderRes = await fetch(leaderUrl, {
               ...fetchOptions,
               signal: AbortSignal.timeout(3000),
@@ -103,5 +112,5 @@ export async function apiRequest(path, options = {}) {
 
 /** @deprecated use apiRequest directly */
 export function getApiBase() {
-  return `http://${location.hostname}:${getPreferredPort()}`;
+  return nodeBase(getPreferredPort());
 }

@@ -3,9 +3,11 @@ const nodeId = process.env.NODE_ID || 'node-a';
 const port = parseInt(process.env.PORT || '3001', 10);
 
 const peersStr = process.env.PEERS || '';
+// "node-b:3002" (same Docker network) or "node-b@10.0.1.5:3002" (node on another machine)
 const peers = peersStr ? peersStr.split(',').map(peer => {
-  const [id, portStr] = peer.split(':');
-  return { id, host: id, port: parseInt(portStr, 10) };
+  const [idHost, portStr] = peer.split(':');
+  const [id, host = id] = idHost.split('@');
+  return { id, host, port: parseInt(portStr, 10) };
 }) : [];
 
 module.exports = {
