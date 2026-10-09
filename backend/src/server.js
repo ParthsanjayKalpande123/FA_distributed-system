@@ -123,6 +123,15 @@ async function main() {
       serviceRegistry.registerService('attendance', ['mark', 'query'], 'Attendance management service', async (method, args) => {
         switch (method) {
           case 'mark':
+            if (typeof args.date !== 'string' || !args.date.trim() || args.date === 'undefined' || args.date === 'null') {
+              throw new Error('A valid attendance date is required');
+            }
+            if (typeof args.studentId !== 'string' || !args.studentId.trim()) {
+              throw new Error('A student ID is required');
+            }
+            if (typeof args.present !== 'boolean') {
+              throw new Error('Attendance status must be present or absent');
+            }
             return await raftNode.propose({ type: 'MARK_ATTENDANCE', ...args });
           case 'query':
             return stateMachine.attendance.query(args.date);

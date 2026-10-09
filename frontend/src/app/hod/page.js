@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest, getUser } from '../../lib/api';
+import { BookingAnalytics } from '../../components/dashboard/WorkflowCapabilities';
 
 /* ── SVG Icons ──────────────────────────────────────────── */
 const Icons = {
@@ -311,6 +312,8 @@ export default function HodDashboard() {
               )}
             </div>
           )}
+
+          <BookingAnalytics />
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { apiRequest, getUser } from '../../lib/api';
 import { useWebSocket } from '../../lib/useWebSocket';
+import { AdminSystems } from '../../components/dashboard/WorkflowCapabilities';
 
 /* ── SVG Icons ──────────────────────────────────────────── */
 const Icons = {
@@ -376,6 +377,8 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
+
+          <AdminSystems />
 
           {/* Bottom row */}
           <div className="grid-2">

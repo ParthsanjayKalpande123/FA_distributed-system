@@ -238,12 +238,6 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div style={{ marginTop: '1rem', textAlign: 'center' }}>
-            <a href="/explorer" style={{ color: 'var(--brand)', textDecoration: 'underline' }}>
-              Explore Project Demos →
-            </a>
-          </div>
-
           {/* Demo credentials */}
           <div style={{ marginTop: '1.75rem' }}>
             <button

@@ -63,13 +63,17 @@ class MapReduceEngine {
   runLocalMap(jobType) {
     switch (jobType) {
       case 'attendance-summary': {
-        // Map: for each date, count present/absent
+        // Map: count attendance records by date across the local state machine.
         const records = this.stateMachine.attendance.getAll();
         const summary = {};
-        for (const r of records) {
-          summary[r.date] = summary[r.date] || { present: 0, absent: 0, total: 0 };
-          if (r.present) summary[r.date].present++; else summary[r.date].absent++;
-          summary[r.date].total++;
+        for (const record of records) {
+          if (!record.date || record.date === 'undefined' || record.date === 'null') continue;
+          if (!summary[record.date]) {
+            summary[record.date] = { present: 0, absent: 0, total: 0 };
+          }
+          if (record.present) summary[record.date].present++;
+          else summary[record.date].absent++;
+          summary[record.date].total++;
         }
         return { type: 'attendance-summary', data: summary, nodeId: this.config.nodeId };
       }

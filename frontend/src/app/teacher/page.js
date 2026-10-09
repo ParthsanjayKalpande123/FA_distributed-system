@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { apiRequest, getUser } from '../../lib/api';
+import { TeacherInsights } from '../../components/dashboard/WorkflowCapabilities';
 
 /* ── SVG Icons ────────────────────────────────────────────── */
 const Icons = {
@@ -359,6 +360,8 @@ export default function TeacherDashboard() {
               )}
             </div>
           </div>
+
+          <TeacherInsights />
         </div>
       </div>
     </div>

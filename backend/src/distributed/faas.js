@@ -19,12 +19,22 @@ class FaaSEngine {
       id: 'builtin-attendance-report',
       name: 'Attendance Report Generator',
       code: `
-        const byDate = {};
-        for (const r of context.stateMachine.attendance.getAll()) {
-          byDate[r.date] = byDate[r.date] || { date: r.date, present: 0, absent: 0 };
-          if (r.present) byDate[r.date].present++; else byDate[r.date].absent++;
+        const records = context.stateMachine.attendance.getAll();
+        const grouped = {};
+        for (const record of records) {
+          if (!record.date || record.date === 'undefined' || record.date === 'null') continue;
+          const key = record.date + '|' + (record.subject || 'General');
+          if (!grouped[key]) {
+            grouped[key] = { date: record.date, subject: record.subject || 'General', present: 0, absent: 0 };
+          }
+          if (record.present) grouped[key].present++;
+          else grouped[key].absent++;
         }
-        const report = Object.values(byDate).map(d => ({ ...d, total: d.present + d.absent, percentage: Math.round(d.present / (d.present + d.absent) * 100) }));
+        const report = Object.values(grouped).map(item => ({
+          ...item,
+          total: item.present + item.absent,
+          percentage: item.present + item.absent > 0 ? Math.round(item.present / (item.present + item.absent) * 100) : 0
+        }));
         return { type: 'attendance-report', generatedAt: new Date().toISOString(), data: report };
       `,
       owner: 'system',

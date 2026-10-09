@@ -6,6 +6,16 @@ function createAttendanceRoutes(raftNode, stateMachine) {
 
   router.post('/api/attendance', async (req, res) => {
     try {
+      const { date, studentId, present } = req.body;
+      if (typeof date !== 'string' || !date.trim() || date === 'undefined' || date === 'null') {
+        return res.status(400).json({ error: 'A valid attendance date is required' });
+      }
+      if (typeof studentId !== 'string' || !studentId.trim()) {
+        return res.status(400).json({ error: 'A student ID is required' });
+      }
+      if (typeof present !== 'boolean') {
+        return res.status(400).json({ error: 'Attendance status must be present or absent' });
+      }
       const result = await raftNode.propose({ type: 'MARK_ATTENDANCE', ...req.body });
       res.status(201).json(result);
     } catch (error) {
